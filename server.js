@@ -13,7 +13,7 @@ const API_BASE = 'https://www.googleapis.com/youtube/v3';
 // Tune via Render environment variables if needed; these conservative defaults
 // are shared by ALL visitors, never per visitor.
 const SEARCH_DAILY_BUDGET = Math.min(90, Math.max(0, Number(process.env.SEARCH_DAILY_BUDGET ?? 80) || 0));
-const UPLOADS_REFRESH_MS = Math.max(120000, Number(process.env.UPLOADS_REFRESH_MS || 180000));
+const UPLOADS_REFRESH_MS = Math.max(120000, Number(process.env.UPLOADS_REFRESH_MS || 480000));
 const VIDEO_REFRESH_MS = Math.max(60000, Number(process.env.VIDEO_REFRESH_MS || 120000));
 const SEARCH_REFRESH_MS = SEARCH_DAILY_BUDGET ? Math.ceil(86400000 / SEARCH_DAILY_BUDGET) : Infinity;
 const MAX_AGE_MS = 30 * 60000;
