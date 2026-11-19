@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f2f3f7">
+  <meta name="description" content="유튜브 멤버들의 현재 라이브 방송 현황을 확인하세요.">
+  <title>KINGSMAN LABEL — LIVE 현황</title>
+  <style>
+    :root { font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",system-ui,sans-serif; font-synthesis:none; color:#252529; background:#f2f3f7; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:320px; }
+    .hero { position:relative; height:clamp(142px,22vw,245px); background:#1b1518 url('/assets/banner.jpg') center 48% / cover no-repeat; box-shadow:0 4px 16px #00000012; }
+    .hero::after { content:""; position:absolute; inset:0; background:linear-gradient(0deg,#0002,transparent 50%); pointer-events:none; }
+    .page { max-width:1180px; margin:auto; padding:22px 20px 58px; }
+    .toolbar { display:flex; align-items:center; justify-content:space-between; gap:9px; margin:0 1px 16px; }
+    .toolbar-title { margin:0; font-size:16px; font-weight:800; letter-spacing:-.4px; }
+    .toolbar-info { color:#7e8088; font-size:12px; margin-top:4px; }
+    .toolbar-actions { display:flex; gap:7px; align-items:center; }
+    .update { display:inline-flex; align-items:center; gap:4px; padding:7px 10px; border:1px solid #dadddf; background:white; border-radius:9px; font-size:11px; font-weight:700; cursor:pointer; color:#525760; }
+    .update:hover { background:#f9f9f9; }
+    .mode { display:inline-block; border-radius:100px; padding:6px 9px; color:#777d87; background:#e6e8ee; font-size:11px; font-weight:700; white-space:nowrap; }
+    .mode.preview { background:#fff3d9; color:#986e1f; }
+    .notice { margin:0 0 17px; padding:10px 12px; border:1px solid #e5d5a6; background:#fffaec; border-radius:10px; color:#88713f; font-size:12px; line-height:1.6; }
+    .notice[hidden] { display:none; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:19px; }
+    .card { display:flex; min-width:0; flex-direction:column; overflow:hidden; background:#fff; box-shadow:0 4px 14px #13213112; border-radius:15px; }
+    .card.offline,.card.setup,.card.checking,.card.error,.card.stale { background:#fbfbfd; }
+    .thumb { aspect-ratio:16/9; display:flex; align-items:center; justify-content:center; position:relative; background:#000; overflow:hidden; }
+    .thumb img { width:100%; height:100%; object-fit:contain; display:block; }
+    .card:not(.live) .thumb { background:#eceef3; }
+    .sleep { color:#b4b8c2; font-weight:650; font-size:clamp(11px,1.5vw,15px); }
+    .sleep .zz { font-size:17px; color:#7ba7e2; margin-right:4px; }
+    .card-body { display:flex; flex:1; flex-direction:column; min-height:166px; padding:15px 16px 16px; }
+    .pill { align-self:flex-start; display:inline-flex; align-items:center; gap:5px; padding:5px 10px; line-height:1; font-size:11px; font-weight:800; color:#fff; border-radius:30px; background:#acb0b6; }
+    .pill.live { background:#fc525c; }
+    .pill.setup,.pill.checking { background:#8b98ae; }
+    .pill.error,.pill.stale { background:#d09c50; }
+    .pulse { width:9px; height:9px; background:#ffc8cd; border-radius:50%; box-shadow:0 0 0 2px #ff8490; }
+    .name { margin:7px 0 0; font-size:17px; letter-spacing:-.45px; font-weight:800; overflow-wrap:anywhere; }
+    .card:not(.live) .name { color:#7b7d84; }
+    .desc { color:#666b75; font-size:13px; line-height:1.45; margin:11px 0 0; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+    .card:not(.live) .desc { color:#9599a1; }
+    .watch { margin-top:auto; display:block; width:100%; background:#fb1010; color:white; text-align:center; border-radius:8px; padding:11px 6px; text-decoration:none; font-size:14px; font-weight:800; }
+    .watch:hover { background:#e00000; }
+    .button-space { padding-top:19px; margin-top:auto; }
+    .channel { display:inline-block; color:#858a93; font-size:12px; text-decoration:underline; text-underline-offset:2px; margin-top:13px; }
+    .bottom { margin:23px auto 0; text-align:center; font-size:12px; line-height:1.8; color:#9498a0; }
+    .bottom a { color:#707987; }
+    @media (min-width:790px) { .grid { grid-template-columns:repeat(4,minmax(0,1fr)); } .card-body { min-height:190px; } }
+    @media (max-width:480px) {
+      .hero { height:112px; }
+      .page { padding:14px 11px 42px; }
+      .toolbar { margin-bottom:12px; }
+      .toolbar-title { font-size:13px; }
+      .toolbar-info { font-size:10px; }
+      .mode { font-size:9px; padding:5px 7px; }
+      .update { padding:6px 8px; font-size:10px; }
+      .grid { gap:11px; }
+      .card { border-radius:11px; }
+      .card-body { min-height:126px; padding:9px 9px 10px; }
+      .pill { padding:4px 8px; font-size:10px; }
+      .name { font-size:13px; margin-top:6px; }
+      .desc { font-size:10px; margin-top:7px; -webkit-line-clamp:3; }
+      .button-space { padding-top:11px; }
+      .watch { font-size:11px; padding:8px 4px; border-radius:6px; }
+      .channel { font-size:10px; margin-top:10px; }
+      .sleep { font-size:11px; }
+    }
+    @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
+  </style>
+</head>
+<body>
+  <header class="hero" aria-label="KINGSMAN LABEL 배너"></header>
+  <main class="page">
+    <div class="toolbar">
+      <div><h1 class="toolbar-title" id="summary">유튜브 LIVE 현황</h1><div class="toolbar-info" id="checked-at">방송 상태를 확인 중입니다...</div></div>
+      <div class="toolbar-actions"><span class="mode" id="mode-label">연결 중</span><button id="refresh" type="button" class="update" title="상태 다시 불러오기">↻ 새로고침</button></div>
+    </div>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section id="grid" class="grid" aria-live="polite" aria-label="멤버별 유튜브 방송 상태"></section>
+    <div class="bottom" id="bottom">방송 정보 제공: YouTube Data API · 채널 링크는 YouTube로 연결됩니다.<br><a href="/?demo=1">디자인 데모 보기</a></div>
+  </main>
+  <script>
+    const DEMO = new URLSearchParams(location.search).get('demo') === '1';
+    const EXAMPLE = [
+      {id:'kim',name:'김인환 대표님',status:'offline',live:false},
+      {id:'cha',name:'차윤현',status:'live',live:true,title:'저점매수 친하게 지내자야 #킹스맨레이블',image:'/assets/cha-live.jpg',videoUrl:''},
+      {id:'ahn',name:'안재현',status:'live',live:true,title:'햄부기부기 북딱쓰 #맛집 #맛집추천',image:'/assets/ahn-live.jpg',videoUrl:''},
+      {id:'doil',name:'도일',status:'offline',live:false},
+      {id:'chang',name:'창욱',status:'offline',live:false},
+      {id:'sung',name:'성준',status:'offline',live:false}
+    ];
+    const grid=document.querySelector('#grid');
+    const escapeHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    function safeYoutube(url) {
+      try {const u=new URL(url); return u.protocol==='https:' && (u.hostname==='www.youtube.com'||u.hostname==='youtube.com') ? u.href : '';} catch {return '';}
+    }
+    function safeImage(url) {
+      if (typeof url==='string' && /^\/assets\/[a-z0-9.-]+\.jpg$/i.test(url)) return url;
+      try { const u=new URL(url); return u.protocol==='https:' && (u.hostname==='i.ytimg.com'||u.hostname==='img.youtube.com'||u.hostname.endsWith('.ytimg.com')) ? u.href:''; }catch {return '';}
+    }
+    function render(members) {
+      const liveCount=members.filter(m=>m.live).length;
+      document.querySelector('#summary').textContent=`${members.length}명 중 ${liveCount}명 LIVE`;
+      grid.innerHTML=members.map(m=>{
+        const status = ['live','offline','setup','checking','error','stale'].includes(m.status)?m.status:'checking';
+        const live=status==='live' && m.live;
+        const statusText={live:'LIVE',offline:'OFFLINE',setup:'미설정',checking:'확인 중',error:'확인 실패',stale:'확인 지연'}[status];
+        const msg={offline:'현재 진행 중인 라이브 방송이 없습니다.',setup:'아직 유튜브 채널이 등록되지 않았습니다.',checking:'유튜브 방송 상태를 확인 중입니다.',error:'유튜브 채널 정보를 확인할 수 없습니다.',stale:'마지막 방송 확인 결과가 오래되었습니다.'}[status]||'';
+        const img=live?safeImage(m.image):'';
+        const thumb=img?`<img loading="lazy" src="${escapeHtml(img)}" alt="${escapeHtml(m.name)} 방송 썸네일">`:
+          `<span class="sleep">${live?'🔴 방송 중':status==='offline'?'<span class="zz">ᶻᶻ</span>방송 쉬는 중':'☁ 방송 정보 확인 중'}</span>`;
+        const link=live?safeYoutube(m.videoUrl):'';
+        const channel=safeYoutube(m.channelUrl);
+        const btn=live?`<div class="button-space">${link?`<a class="watch" href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">방송 보러가기</a>`:`<div class="watch" aria-label="데모 영상 주소 없음">방송 보러가기 (예시)</div>`}</div>`:
+          channel?`<a class="channel" href="${escapeHtml(channel)}" target="_blank" rel="noopener noreferrer">유튜브 채널 보기</a>`:'';
+        return `<article class="card ${status}"><div class="thumb">${thumb}</div><div class="card-body"><span class="pill ${status}">${live?'<span class="pulse" aria-hidden="true"></span>':''}${statusText}</span><h2 class="name">${escapeHtml(m.name)}</h2><p class="desc">${escapeHtml(live?m.title||'라이브 방송 중입니다.':m.message||msg)}</p>${btn}</div></article>`;
+      }).join('');
+    }
+    async function refresh() {
+      if (DEMO) {
+        render(EXAMPLE);
+        document.querySelector('#mode-label').textContent='예시 데이터';
+        document.querySelector('#mode-label').classList.add('preview');
+        document.querySelector('#checked-at').textContent='방송 여부는 실제 데이터가 아닙니다.';
+        document.querySelector('#notice').hidden=false;
+        document.querySelector('#notice').textContent='디자인 예시 화면입니다. 실제 유튜브 방송 상태가 아니에요. 실제 화면으로 돌아가려면 주소에서 ?demo=1을 삭제하세요.';
+        return;
+      }
+      const button=document.querySelector('#refresh');
+      button.disabled=true;
+      try {
+        const response=await fetch('/api/live',{cache:'no-store'});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload=await response.json();
+        if (!Array.isArray(payload.members)) throw new Error('잘못된 서버 응답');
+        render(payload.members);
+        const notice=document.querySelector('#notice');
+        const mode=document.querySelector('#mode-label');
+        mode.textContent=payload.mode==='needs_api_key'?'API 키 필요':'자동 연동';
+        const keyMissing=payload.mode==='needs_api_key';
+        const setupCount=payload.members.filter(m=>m.status==='setup').length;
+        if (keyMissing) notice.textContent='Google Cloud에서 발급받은 유튜브 API 키를 Render 환경변수 YOUTUBE_API_KEY에 등록해주세요.';
+        else if (setupCount===payload.members.length) notice.textContent='config/members.json에 유튜브 채널 ID(UC...) 또는 @핸들을 등록해야 자동 조회가 시작됩니다.';
+        else if (payload.lastError) notice.textContent=payload.lastError;
+        notice.hidden=!(keyMissing||setupCount===payload.members.length||payload.lastError);
+        document.querySelector('#checked-at').textContent='페이지 갱신: '+new Date(payload.serverTime).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit'})+' · 신규 LIVE 감지는 유튜브 API 한도에 따라 지연될 수 있습니다.';
+      } catch (err) {
+        const n=document.querySelector('#notice'); n.hidden=false;
+        n.textContent='서버에 연결할 수 없습니다. 잠시 후 새로고침해 주세요. ('+err.message+')';
+      } finally {button.disabled=false;}
+    }
+    document.querySelector('#refresh').addEventListener('click',()=>{refresh();setTimeout(refresh,3000);});
+    refresh();
+    if (!DEMO) setInterval(refresh,60*1000);
+  </script>
+</body>
+</html>
