@@ -19,6 +19,7 @@ const SEARCH_REFRESH_MS = SEARCH_DAILY_BUDGET ? Math.ceil(86400000 / SEARCH_DAIL
 const MAX_AGE_MS = 30 * 60000;
 const BACKGROUND_TICK_MS = 30000;
 const MAX_VIDEO_IDS_PER_CHANNEL = 12;
+const UPLOADS_RETRY_MS = 6 * 60 * 60 * 1000; // Re-try unavailable upload playlists every 6h
 const configured = JSON.parse(fs.readFileSync(path.join(__dirname, 'config/members.json'), 'utf8'));
 const validId = id => /^UC[A-Za-z0-9_-]{22}$/.test(id);
 const validHandle = handle => /^@[\p{L}\p{N}_.-]{3,30}$/u.test(handle);
@@ -29,12 +30,13 @@ const members = configured.map((member, index) => ({
   channelInput: String(member.channel || '').trim(),
   tag: String(member.tag || ''),
   channelId: null, uploadsPlaylist: null, recentUploadsFetched: false,
+  uploadsUnavailable: false, uploadsRetryAt: 0,
   recentVideoIds: [], channelUrl: null,
   status: 'setup', title: '', image: '', videoId: null,
   lastCheckedAt: null, error: ''
 }));
 let resolveAt = 0, uploadsAt = 0, videosAt = 0, searchAt = 0;
-let searchCursor = 0, inFlight = null, lastSyncError = '';
+let searchCursor = 0, fallbackSearchCursor = 0, normalSearchCursor = 0, inFlight = null, lastSyncError = '';
 let searchesToday = 0, quotaDay = '', searchBlockedUntilNextDay = false;
 let readQuotaBlockedUntilNextDay = false;
 const QUOTA_REASONS = new Set(['quotaExceeded', 'dailyLimitExceeded', 'rateLimitExceeded']);
@@ -141,20 +143,34 @@ async function resolveChannels() {
   }
 }
 async function recentUploads() {
-  const active = members.filter(m => m.channelId && m.uploadsPlaylist);
+  const now = Date.now();
+  // Some valid YouTube channels currently have no accessible uploads playlist.
+  // A known playlistNotFound is not a bad handle or a fatal channel error.
+  const active = members.filter(m => m.channelId && m.uploadsPlaylist && now >= m.uploadsRetryAt);
   if (!active.length) return;
-  // Each channel has its own bounded candidate list: old uploads do not
-  // accumulate into hundreds of videos.list checks every 2 minutes.
   const results = await Promise.allSettled(active.map(m => youtube('playlistItems', {
     part: 'contentDetails', playlistId: m.uploadsPlaylist, maxResults: MAX_VIDEO_IDS_PER_CHANNEL
   })));
   for (let i = 0; i < results.length; i++) {
     const m = active[i], result = results[i];
     if (result.status === 'fulfilled') {
+      m.uploadsUnavailable = false;
+      m.uploadsRetryAt = 0;
       m.recentUploadsFetched = true;
       const fresh = (result.value.items || []).map(item => item.contentDetails?.videoId).filter(validVideoId);
       m.recentVideoIds = [...new Set([...(m.videoId ? [m.videoId] : []), ...fresh])].slice(0, MAX_VIDEO_IDS_PER_CHANNEL);
-    } else { lastSyncError = result.reason.message; markFailure(m, result.reason.message); }
+    } else if (result.reason?.reason === 'playlistNotFound') {
+      // Don't repeatedly call a missing playlist every refresh cycle.
+      m.uploadsUnavailable = true;
+      m.uploadsRetryAt = Date.now() + UPLOADS_RETRY_MS;
+      m.recentUploadsFetched = false;
+      m.error = '';
+      if (!m.lastCheckedAt) m.status = 'checking';
+      // searchOneChannel will prioritize channels with unavailable playlists.
+    } else {
+      lastSyncError = result.reason.message;
+      markFailure(m, result.reason.message);
+    }
   }
 }
 async function inspectKnownVideos() {
@@ -183,14 +199,20 @@ async function inspectKnownVideos() {
     if (!m.channelId) continue;
     const live = liveByChannel.get(m.channelId);
     if (live) markLive(m, live);
-    else if (m.recentUploadsFetched && ['live', 'offline', 'checking'].includes(m.status)) markOffline(m);
+    else if (m.status === 'live' || (m.recentUploadsFetched && ['offline', 'checking'].includes(m.status))) markOffline(m);
   }
 }
 async function searchOneChannel() {
   resetDailyBudget();
   const active = members.filter(m => m.channelId);
   if (!active.length || !SEARCH_DAILY_BUDGET || searchesToday >= SEARCH_DAILY_BUDGET || searchBlockedUntilNextDay || readQuotaBlockedUntilNextDay) return;
-  const m = active[searchCursor % active.length];
+  // Spend most of the fixed search budget on channels where playlists cannot work.
+  // Keep every fifth search for normal channels to catch indexing delays.
+  const fallback = active.filter(m => m.uploadsUnavailable || !m.uploadsPlaylist);
+  const normal = active.filter(m => !fallback.includes(m));
+  const useFallback = fallback.length > 0 && (searchCursor % 5 !== 4 || !normal.length);
+  const pool = useFallback ? fallback : (normal.length ? normal : fallback);
+  const m = pool[useFallback ? fallbackSearchCursor++ % pool.length : normalSearchCursor++ % pool.length];
   searchCursor++;
   searchesToday++; // Even failed requests can consume quota.
   try {
@@ -228,7 +250,7 @@ async function updateIfDue() {
 }
 function exposedMember(m) {
   const last = m.lastCheckedAt ? Date.parse(m.lastCheckedAt) : 0;
-  const stale = Boolean(last && Date.now() - last > MAX_AGE_MS);
+  const stale = Boolean(last && Date.now() - last > (m.uploadsUnavailable ? 60 * 60000 : MAX_AGE_MS));
   return {
     id: m.id, name: m.name, tag: m.tag,
     channelUrl: m.channelUrl || toChannelUrl(m),
@@ -238,7 +260,8 @@ function exposedMember(m) {
     videoUrl: validVideoId(m.videoId) ? `https://www.youtube.com/watch?v=${m.videoId}` : '',
     lastCheckedAt: m.lastCheckedAt,
     message: m.status === 'setup' || m.status === 'error' ? m.error :
-      (stale ? '마지막 LIVE 확인 결과가 오래되었습니다.' : '')
+      (stale ? '마지막 LIVE 확인 결과가 오래되었습니다.' :
+        (m.uploadsUnavailable ? '업로드 목록이 없어 검색 API로 확인 중입니다. LIVE 감지가 지연될 수 있습니다.' : ''))
   };
 }
 function statusPayload() {
@@ -249,7 +272,7 @@ function statusPayload() {
     searchesToday, searchDailyBudget: SEARCH_DAILY_BUDGET,
     nextSearchAt: Number.isFinite(SEARCH_REFRESH_MS) && searchAt ? new Date(searchAt + SEARCH_REFRESH_MS).toISOString() : null,
     lastError: lastSyncError ? '일부 채널을 최신 상태로 확인하지 못했을 수 있습니다.' : '',
-    note: '업로드 목록 약 3분 간격, 알려진 영상 약 2분 간격 확인. 검색 API는 별도 일일 예산 내에서 순환 사용합니다.'
+    note: '업로드 목록 약 8분 간격, 알려진 영상 약 2분 간격 확인. 업로드 목록이 없는 채널은 검색 API로 우선 확인합니다.'
   };
 }
 function json(res, status, payload) {
